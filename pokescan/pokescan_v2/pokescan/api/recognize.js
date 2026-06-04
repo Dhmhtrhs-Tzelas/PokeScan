@@ -12,9 +12,11 @@ export default async function handler(req) {
     }
 
     const GEMINI_KEY = process.env.GEMINI_API_KEY;
-    const POKEMON_KEY = process.env.POKEMON_TCG_API_KEY || '';
 
-    // Step 1: Ask Gemini to identify the card
+    // Clean base64
+    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+
+    // Ask Gemini to identify the card
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
       {
@@ -24,100 +26,93 @@ export default async function handler(req) {
           contents: [{
             parts: [
               {
-                text: `This is a Pokemon Trading Card Game card. Please identify it and respond ONLY with a JSON object in this exact format, nothing else:
-{
-  "name": "exact card name",
-  "set": "set name",
-  "number": "card number like 025/185",
-  "rarity": "Common/Uncommon/Rare/Holo Rare/Ultra Rare/Secret Rare",
-  "hp": "HP number or null",
-  "type": "Pokemon type like Fire/Water/etc or Trainer or Energy"
-}
-If you cannot identify it as a Pokemon card, return: {"error": "not a pokemon card"}`
+                text: `Look at this Pokemon Trading Card Game card image. Tell me the card name, set name, and card number. Reply in this exact format with nothing else:
+NAME: [card name]
+SET: [set name]
+NUMBER: [card number]
+RARITY: [rarity]
+
+If it is not a Pokemon card, reply: NOT_A_CARD`
               },
               {
                 inline_data: {
                   mime_type: 'image/jpeg',
-                  data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
+                  data: base64Data
                 }
               }
             ]
           }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 300 }
+          generationConfig: { temperature: 0.1, maxOutputTokens: 200 }
         })
       }
     );
 
     const geminiData = await geminiRes.json();
-    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-    let cardInfo;
-    try {
-      const cleaned = rawText.replace(/```json|```/g, '').trim();
-      cardInfo = JSON.parse(cleaned);
-    } catch {
-      return new Response(JSON.stringify({ error: 'Could not parse card info', raw: rawText }), { status: 422 });
+    
+    if (!geminiRes.ok) {
+      return new Response(JSON.stringify({ error: 'Gemini error: ' + JSON.stringify(geminiData) }), { status: 500 });
     }
 
-    if (cardInfo.error) {
-      return new Response(JSON.stringify({ error: cardInfo.error }), { status: 422 });
+    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+
+    if (!rawText || rawText.includes('NOT_A_CARD')) {
+      return new Response(JSON.stringify({ error: 'Δεν αναγνωρίστηκε Pokemon κάρτα' }), { status: 422 });
     }
 
-    // Step 2: Search Pokemon TCG API for price
-    const searchName = encodeURIComponent(cardInfo.name);
-    const tcgHeaders = { 'Content-Type': 'application/json' };
-    if (POKEMON_KEY) tcgHeaders['X-Api-Key'] = POKEMON_KEY;
+    // Parse the simple format
+    const getName = (t) => t.match(/NAME:\s*(.+)/i)?.[1]?.trim() || '';
+    const getSet  = (t) => t.match(/SET:\s*(.+)/i)?.[1]?.trim() || '';
+    const getNum  = (t) => t.match(/NUMBER:\s*(.+)/i)?.[1]?.trim() || '';
+    const getRar  = (t) => t.match(/RARITY:\s*(.+)/i)?.[1]?.trim() || '';
 
+    const cardName = getName(rawText);
+    const cardSet  = getSet(rawText);
+    const cardNum  = getNum(rawText);
+    const cardRar  = getRar(rawText);
+
+    if (!cardName) {
+      return new Response(JSON.stringify({ error: 'Δεν βρέθηκε όνομα κάρτας', raw: rawText }), { status: 422 });
+    }
+
+    // Search Pokemon TCG API
+    const searchName = encodeURIComponent(cardName);
     const tcgRes = await fetch(
-      `https://api.pokemontcg.io/v2/cards?q=name:"${searchName}"&pageSize=10`,
-      { headers: tcgHeaders }
+      `https://api.pokemontcg.io/v2/cards?q=name:"${searchName}"&pageSize=8`,
+      { headers: { 'Content-Type': 'application/json' } }
     );
     const tcgData = await tcgRes.json();
 
-    // Find best matching card
     let matchedCard = null;
     if (tcgData.data && tcgData.data.length > 0) {
-      // Try to match by set name too
       matchedCard = tcgData.data.find(c =>
-        c.set?.name?.toLowerCase().includes(cardInfo.set?.toLowerCase()?.split(' ')?.[0] || '') ||
-        c.number === cardInfo.number
+        c.number === cardNum ||
+        c.set?.name?.toLowerCase().includes(cardSet.toLowerCase().split(' ')[0])
       ) || tcgData.data[0];
     }
 
-    // Build price info
+    // Get price
     let price = null;
     let priceSource = null;
-    if (matchedCard?.tcgplayer?.prices) {
-      const prices = matchedCard.tcgplayer.prices;
-      const priceKey = prices.holofoil || prices.normal || prices.reverseHolofoil || prices['1stEditionHolofoil'];
-      if (priceKey?.market) {
-        price = priceKey.market;
-        priceSource = 'TCGPlayer';
-      } else if (priceKey?.mid) {
-        price = priceKey.mid;
-        priceSource = 'TCGPlayer';
-      }
-    }
-    if (!price && matchedCard?.cardmarket?.prices?.averageSellPrice) {
+    if (matchedCard?.cardmarket?.prices?.averageSellPrice) {
       price = matchedCard.cardmarket.prices.averageSellPrice;
       priceSource = 'CardMarket';
+    } else if (matchedCard?.tcgplayer?.prices) {
+      const p = matchedCard.tcgplayer.prices;
+      const pk = p.holofoil || p.normal || p.reverseHolofoil || p['1stEditionHolofoil'];
+      if (pk?.market) { price = pk.market; priceSource = 'TCGPlayer'; }
+      else if (pk?.mid) { price = pk.mid; priceSource = 'TCGPlayer'; }
     }
 
-    const result = {
-      name: cardInfo.name,
-      set: cardInfo.set,
-      number: cardInfo.number,
-      rarity: cardInfo.rarity,
-      type: cardInfo.type,
-      hp: cardInfo.hp,
+    return new Response(JSON.stringify({
+      name: cardName,
+      set: cardSet + (cardNum ? ' · ' + cardNum : ''),
+      rarity: cardRar,
       image: matchedCard?.images?.large || matchedCard?.images?.small || null,
       price: price ? parseFloat(price.toFixed(2)) : null,
       priceSource,
-      cardmarketUrl: matchedCard?.cardmarket?.url || `https://www.cardmarket.com/en/Pokemon/Cards/Singles?searchString=${encodeURIComponent(cardInfo.name)}`,
+      cardmarketUrl: matchedCard?.cardmarket?.url || `https://www.cardmarket.com/en/Pokemon/Products/Singles?searchString=${encodeURIComponent(cardName)}`,
       tcgId: matchedCard?.id || null,
-    };
-
-    return new Response(JSON.stringify(result), {
+    }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
     });
