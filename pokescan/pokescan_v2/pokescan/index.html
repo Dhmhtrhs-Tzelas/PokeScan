@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PokéScan">
+  <meta name="description" content="Σκανάρισε Pokemon κάρτες, παρακολούθησε τιμές και λάβε ειδοποιήσεις">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <title>PokéScan</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-inner">
+        <div class="logo">
+          <span class="logo-icon">◈</span>
+          <span class="logo-text">PokéScan</span>
+        </div>
+        <div class="header-right">
+          <span id="alertDot" class="alert-dot hidden"></span>
+          <button class="icon-btn" onclick="showTab('alerts')" aria-label="Ειδοποιήσεις">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Tab Content -->
+    <main class="main">
+      <!-- SCAN TAB -->
+      <section id="tab-scan" class="tab-content active">
+        <div class="scan-hero">
+          <div class="scan-area" id="scanArea" onclick="document.getElementById('fileInput').click()">
+            <div class="scan-frame">
+              <div class="corner tl"></div>
+              <div class="corner tr"></div>
+              <div class="corner bl"></div>
+              <div class="corner br"></div>
+              <div class="scan-inner">
+                <div class="scan-icon-wrap">
+                  <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h.01M15 9h.01M9 15h.01M15 15h.01M12 12h.01"/></svg>
+                </div>
+                <p class="scan-label">Φωτογράφισε κάρτα</p>
+                <p class="scan-hint">κάμερα · gallery · instant AI scan</p>
+              </div>
+            </div>
+            <div class="scan-line" id="scanLine"></div>
+          </div>
+          <input type="file" id="fileInput" accept="image/*" capture="environment">
+        </div>
+
+        <div class="loading-wrap hidden" id="loadingWrap">
+          <div class="loading-spinner"></div>
+          <p class="loading-text">Αναγνώριση κάρτας...</p>
+        </div>
+
+        <div class="result-wrap hidden" id="resultWrap">
+          <div class="result-card">
+            <div class="result-img-wrap">
+              <img id="resultImg" src="" alt="Card">
+              <div class="result-glow"></div>
+            </div>
+            <div class="result-info">
+              <h2 class="result-name" id="resultName">—</h2>
+              <p class="result-set" id="resultSet">—</p>
+              <div class="result-price-row">
+                <span class="result-price" id="resultPrice">—</span>
+                <span class="result-change" id="resultChange">—</span>
+              </div>
+              <div class="result-actions">
+                <button class="btn btn-primary" onclick="addToCollection()">+ Συλλογή</button>
+                <button class="btn btn-outline" onclick="openCardMarket()">CardMarket ↗</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- COLLECTION TAB -->
+      <section id="tab-collection" class="tab-content">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-num" id="statCount">0</span>
+            <span class="stat-label">κάρτες</span>
+          </div>
+          <div class="stat-card accent">
+            <span class="stat-num" id="statValue">€0</span>
+            <span class="stat-label">αξία συλλογής</span>
+          </div>
+        </div>
+
+        <div class="collection-header">
+          <h3 class="section-title">Η συλλογή μου</h3>
+          <button class="sort-btn" onclick="toggleSort()">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M7 12h10M11 18h2"/></svg>
+            <span id="sortLabel">Αξία</span>
+          </button>
+        </div>
+
+        <div id="collectionList" class="collection-list">
+          <div class="empty-state">
+            <div class="empty-icon">◈</div>
+            <p>Δεν έχεις κάρτες ακόμα</p>
+            <p class="empty-hint">Σκανάρισε την πρώτη σου!</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ALERTS TAB -->
+      <section id="tab-alerts" class="tab-content">
+        <div class="alerts-header">
+          <h3 class="section-title">Ειδοποιήσεις τιμών</h3>
+          <button class="clear-btn" onclick="clearAlerts()">Καθαρισμός</button>
+        </div>
+        <div id="alertList" class="alert-list">
+          <div class="empty-state">
+            <div class="empty-icon">◈</div>
+            <p>Καμία ειδοποίηση ακόμα</p>
+            <p class="empty-hint">Ενεργοποίησε alerts στις ρυθμίσεις</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SETTINGS TAB -->
+      <section id="tab-settings" class="tab-content">
+        <h3 class="section-title">Ρυθμίσεις</h3>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Κατώφλι ειδοποίησης</div>
+          <div class="setting-row">
+            <label>Άνοδος τιμής (%)</label>
+            <div class="setting-input-wrap">
+              <input type="number" id="threshUp" value="10" min="1" max="100">
+              <span>%</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <label>Πτώση τιμής (%)</label>
+            <div class="setting-input-wrap">
+              <input type="number" id="threshDown" value="10" min="1" max="100">
+              <span>%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Ειδοποιήσεις ανά κάρτα</div>
+          <div id="cardNotifList">
+            <p class="no-cards-msg">Δεν υπάρχουν κάρτες στη συλλογή ακόμα.</p>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Ανανέωση τιμών</div>
+          <div class="setting-row">
+            <label>Έλεγχος κάθε</label>
+            <select id="refreshInterval">
+              <option value="1">1 ώρα</option>
+              <option value="6" selected>6 ώρες</option>
+              <option value="12">12 ώρες</option>
+              <option value="24">24 ώρες</option>
+            </select>
+          </div>
+          <button class="btn btn-primary full-width" onclick="simulateRefresh()">Ανανέωση τώρα</button>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Push Notifications</div>
+          <p class="settings-hint">Για να λαμβάνεις ειδοποιήσεις ακόμα και όταν η εφαρμογή είναι κλειστή.</p>
+          <button class="btn btn-outline full-width" id="notifBtn" onclick="requestNotifPermission()">Ενεργοποίηση ειδοποιήσεων</button>
+          <p class="notif-status" id="notifStatus"></p>
+        </div>
+
+        <div class="settings-group pwa-group">
+          <div class="settings-group-title">Εγκατάσταση</div>
+          <p class="settings-hint">Εγκατέστησε το PokéScan στην αρχική οθόνη σου για γρήγορη πρόσβαση.</p>
+          <button class="btn btn-primary full-width" id="installBtn" onclick="installPWA()" style="display:none">Εγκατάσταση στην αρχική οθόνη</button>
+          <div class="install-manual">
+            <div class="install-step">
+              <span class="step-num">1</span>
+              <span>iOS: Safari → Κουμπί κοινοποίησης → «Προσθήκη στην Αρχική Οθόνη»</span>
+            </div>
+            <div class="install-step">
+              <span class="step-num">2</span>
+              <span>Android: Chrome → Μενού (⋮) → «Προσθήκη στην Αρχική Οθόνη»</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav">
+      <button class="nav-item active" onclick="showTab('scan')" id="nav-scan">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h.01M15 9h.01M9 15h.01M15 15h.01"/></svg>
+        <span>Scan</span>
+      </button>
+      <button class="nav-item" onclick="showTab('collection')" id="nav-collection">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+        <span>Συλλογή</span>
+      </button>
+      <button class="nav-item" onclick="showTab('alerts')" id="nav-alerts">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span>Alerts</span>
+      </button>
+      <button class="nav-item" onclick="showTab('settings')" id="nav-settings">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>Ρυθμίσεις</span>
+      </button>
+    </nav>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
