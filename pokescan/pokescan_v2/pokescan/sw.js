@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pokescan-v1';
+const CACHE_NAME = 'pokescan-v4';
 const ASSETS = [
   '/',
   '/index.html',
