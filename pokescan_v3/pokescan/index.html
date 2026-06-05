@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0f0a1e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PokéScan">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Rubik+Mono+One&display=swap" rel="stylesheet">
+  <title>PokéScan</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <div class="header-inner">
+        <div class="logo">
+          <svg class="masterball" viewBox="0 0 44 44" width="38" height="38">
+            <circle cx="22" cy="22" r="21" fill="#cc0000" stroke="#222" stroke-width="1.5"/>
+            <rect x="1" y="20" width="42" height="4" fill="#111" rx="1"/>
+            <path d="M1 22 Q22 0 43 22" fill="#cc0000"/>
+            <path d="M1 22 Q22 44 43 22" fill="#f5f5f5"/>
+            <!-- M letter -->
+            <text x="8" y="17" font-family="Arial Black" font-size="9" font-weight="900" fill="white" opacity="0.9">M</text>
+            <!-- center button -->
+            <circle cx="22" cy="22" r="5.5" fill="white" stroke="#333" stroke-width="1.2"/>
+            <circle cx="22" cy="22" r="3" fill="#e8e8e8"/>
+            <circle cx="20.5" cy="20.5" r="1" fill="white" opacity="0.7"/>
+            <!-- dots -->
+            <circle cx="10" cy="10" r="2" fill="white" opacity="0.6"/>
+            <circle cx="8" cy="14" r="1.2" fill="white" opacity="0.4"/>
+          </svg>
+          <span class="logo-text">PokéScan</span>
+        </div>
+        <button class="notif-btn" onclick="showTab('alerts')" id="headerAlertBtn">
+          <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="notif-badge hidden" id="notifBadge">0</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="main">
+      <!-- SEARCH TAB -->
+      <section id="tab-search" class="tab active">
+        <div class="search-hero">
+          <div class="hero-text">
+            <h1>Βρες την κάρτα σου</h1>
+            <p>Αναζήτησε με όνομα και αριθμό</p>
+          </div>
+          <div class="search-card">
+            <div class="input-group">
+              <label>Όνομα κάρτας</label>
+              <input type="text" id="searchName" placeholder="π.χ. Charizard" autocomplete="off" autocorrect="off" spellcheck="false">
+            </div>
+            <div class="input-group">
+              <label>Αριθμός <span class="optional">(προαιρετικό)</span></label>
+              <input type="text" id="searchNumber" placeholder="π.χ. 013/086" autocomplete="off">
+            </div>
+            <button class="search-btn" onclick="searchCard()" id="searchBtn">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              Αναζήτηση
+            </button>
+          </div>
+        </div>
+
+        <div class="loading-wrap hidden" id="loadingWrap">
+          <div class="pokeball-loader">
+            <svg viewBox="0 0 50 50" width="50" height="50">
+              <circle cx="25" cy="25" r="23" fill="#cc0000" stroke="#333" stroke-width="2"/>
+              <rect x="2" y="23" width="46" height="4" fill="#333"/>
+              <path d="M2 25 Q25 2 48 25" fill="#cc0000"/>
+              <path d="M2 25 Q25 48 48 25" fill="white"/>
+              <circle cx="25" cy="25" r="7" fill="white" stroke="#333" stroke-width="2"/>
+              <circle cx="25" cy="25" r="4" fill="#eee"/>
+            </svg>
+          </div>
+          <p>Αναζήτηση...</p>
+        </div>
+
+        <div class="result-wrap hidden" id="resultWrap">
+          <div class="result-card">
+            <div class="result-img-section">
+              <img id="resultImg" src="" alt="Card">
+              <div class="card-shine"></div>
+            </div>
+            <div class="result-details">
+              <div class="result-header">
+                <h2 id="resultName">—</h2>
+                <span class="rarity-badge" id="resultRarity">—</span>
+              </div>
+              <p class="result-set" id="resultSet">—</p>
+              <div class="price-section">
+                <div class="price-main">
+                  <span class="price-label">Τιμή αγοράς</span>
+                  <span class="price-value" id="resultPrice">—</span>
+                </div>
+                <span class="price-source" id="resultSource">—</span>
+              </div>
+              <div class="result-btns">
+                <button class="btn-add" onclick="addToCollection()">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                  Προσθήκη
+                </button>
+                <button class="btn-market" onclick="openCM()">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  CardMarket
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tips-section" id="tipsSection">
+          <h3>💡 Συμβουλές</h3>
+          <div class="tip-grid">
+            <div class="tip">
+              <span class="tip-icon">🔍</span>
+              <p>Γράψε το αγγλικό όνομα της κάρτας για καλύτερα αποτελέσματα</p>
+            </div>
+            <div class="tip">
+              <span class="tip-icon">🔢</span>
+              <p>Ο αριθμός βρίσκεται κάτω δεξιά στην κάρτα (π.χ. 025/185)</p>
+            </div>
+            <div class="tip">
+              <span class="tip-icon">💰</span>
+              <p>Οι τιμές είναι από CardMarket και TCGPlayer σε πραγματικό χρόνο</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- COLLECTION TAB -->
+      <section id="tab-collection" class="tab">
+        <div class="page-header">
+          <h2>Η Συλλογή μου</h2>
+          <div class="header-actions">
+            <button class="sort-btn" onclick="toggleSort()" title="Ταξινόμηση">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M7 12h10M11 18h2"/></svg>
+              <span id="sortLabel">Αξία</span>
+            </button>
+          </div>
+        </div>
+        <div class="stats-row">
+          <div class="stat-box">
+            <span class="stat-num" id="statCount">0</span>
+            <span class="stat-label">κάρτες</span>
+          </div>
+          <div class="stat-box highlight">
+            <span class="stat-num" id="statValue">€0.00</span>
+            <span class="stat-label">συνολική αξία</span>
+          </div>
+        </div>
+        <div id="collectionList" class="collection-list">
+          <div class="empty-state">
+            <div class="empty-ball">
+              <svg viewBox="0 0 60 60" width="60" height="60">
+                <circle cx="30" cy="30" r="28" fill="#ddd" stroke="#bbb" stroke-width="2"/>
+                <rect x="2" y="28" width="56" height="4" fill="#999"/>
+                <path d="M2 30 Q30 2 58 30" fill="#ddd"/>
+                <path d="M2 30 Q30 58 58 30" fill="#f5f5f5"/>
+                <circle cx="30" cy="30" r="9" fill="white" stroke="#bbb" stroke-width="2"/>
+              </svg>
+            </div>
+            <p>Δεν έχεις κάρτες ακόμα!</p>
+            <p class="empty-sub">Αναζήτησε μια κάρτα και πρόσθεσέ τη</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ALERTS TAB -->
+      <section id="tab-alerts" class="tab">
+        <div class="page-header">
+          <h2>Ειδοποιήσεις</h2>
+          <button class="clear-btn" onclick="clearAlerts()">Καθαρισμός</button>
+        </div>
+        <div id="alertList" class="alert-list">
+          <div class="empty-state">
+            <div class="empty-ball">
+              <svg viewBox="0 0 60 60" width="60" height="60">
+                <circle cx="30" cy="30" r="28" fill="#ddd" stroke="#bbb" stroke-width="2"/>
+                <rect x="2" y="28" width="56" height="4" fill="#999"/>
+                <path d="M2 30 Q30 2 58 30" fill="#ddd"/>
+                <path d="M2 30 Q30 58 58 30" fill="#f5f5f5"/>
+                <circle cx="30" cy="30" r="9" fill="white" stroke="#bbb" stroke-width="2"/>
+              </svg>
+            </div>
+            <p>Καμία ειδοποίηση ακόμα</p>
+            <p class="empty-sub">Θα εμφανιστούν όταν αλλάξουν οι τιμές</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SETTINGS TAB -->
+      <section id="tab-settings" class="tab">
+        <div class="page-header"><h2>Ρυθμίσεις</h2></div>
+
+        <div class="settings-section">
+          <h3>Κατώφλι ειδοποίησης</h3>
+          <div class="setting-row">
+            <label>Άνοδος τιμής</label>
+            <div class="setting-control">
+              <input type="number" id="threshUp" value="10" min="1" max="100"> <span>%</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <label>Πτώση τιμής</label>
+            <div class="setting-control">
+              <input type="number" id="threshDown" value="10" min="1" max="100"> <span>%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section" id="cardNotifSection">
+          <h3>Ειδοποιήσεις ανά κάρτα</h3>
+          <div id="cardNotifList"><p class="no-cards">Δεν υπάρχουν κάρτες ακόμα.</p></div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Ανανέωση τιμών</h3>
+          <button class="refresh-btn" onclick="refreshPrices()">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Ανανέωση τώρα
+          </button>
+        </div>
+
+        <div class="settings-section">
+          <h3>Push Notifications</h3>
+          <p class="settings-hint">Λάβε ειδοποιήσεις ακόμα και όταν η εφαρμογή είναι κλειστή.</p>
+          <button class="notif-enable-btn" id="notifBtn" onclick="requestNotifPermission()">Ενεργοποίηση</button>
+          <p class="notif-status" id="notifStatus"></p>
+        </div>
+
+        <div class="settings-section">
+          <h3>Εγκατάσταση στο κινητό</h3>
+          <button class="install-btn" id="installBtn" onclick="installPWA()" style="display:none">
+            📲 Εγκατάσταση στην αρχική οθόνη
+          </button>
+          <div class="install-steps">
+            <div class="install-step"><span>1</span><p>iOS Safari: κουμπί κοινοποίησης → «Προσθήκη στην Αρχική Οθόνη»</p></div>
+            <div class="install-step"><span>2</span><p>Android Chrome: μενού ⋮ → «Προσθήκη στην Αρχική Οθόνη»</p></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav">
+      <button class="nav-btn active" onclick="showTab('search')" id="nav-search">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <span>Αναζήτηση</span>
+      </button>
+      <button class="nav-btn" onclick="showTab('collection')" id="nav-collection">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+        <span>Συλλογή</span>
+      </button>
+      <button class="nav-btn" onclick="showTab('alerts')" id="nav-alerts">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span>Alerts</span>
+      </button>
+      <button class="nav-btn" onclick="showTab('settings')" id="nav-settings">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>Ρυθμίσεις</span>
+      </button>
+    </nav>
+  </div>
+  <div class="toast hidden" id="toast"></div>
+  <script src="js/app.js"></script>
+</body>
+</html>
