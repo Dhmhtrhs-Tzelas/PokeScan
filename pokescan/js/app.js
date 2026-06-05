@@ -1,50 +1,29 @@
 'use strict';
 
-// ─── State ────────────────────────────────────────────────────────────────────
 let collection = JSON.parse(localStorage.getItem('pokescan_collection') || '[]');
 let alertLog = JSON.parse(localStorage.getItem('pokescan_alerts') || '[]');
 let currentCard = null;
-let sortMode = 'value'; // 'value' | 'name' | 'added'
+let sortMode = 'value';
 let deferredInstallPrompt = null;
 
-// Demo cards (αντικαθίσταται από Pokemon TCG API)
-const DEMO_CARDS = [
-  { id: 'xy1-1',  name: 'Venusaur EX',    set: 'XY · 001/146',              price: 12.50, change: +8.2,  trend: 'up',   cm: 'https://www.cardmarket.com/en/Pokemon/Cards/XY/Venusaur-EX' },
-  { id: 'sv3-125',name: 'Charizard ex',   set: 'Obsidian Flames · 125/197', price: 28.50, change: +12.4, trend: 'up',   cm: 'https://www.cardmarket.com/en/Pokemon/Cards/Obsidian-Flames/Charizard-ex' },
-  { id: 'swsh4-44',name:'Pikachu VMAX',   set: 'Vivid Voltage · 044/185',   price: 9.20,  change: -5.1,  trend: 'down', cm: 'https://www.cardmarket.com/en/Pokemon/Cards/Vivid-Voltage/Pikachu-VMAX' },
-  { id: 'pgo-30', name: 'Mewtwo V',       set: 'Pokemon GO · 030/078',      price: 4.75,  change: +2.8,  trend: 'up',   cm: 'https://www.cardmarket.com/en/Pokemon/Cards/Pokemon-GO/Mewtwo-V' },
-  { id: 'sv2-76', name: 'Gengar ex',      set: 'Paldea Evolved · 076/193',  price: 6.40,  change: -1.3,  trend: 'down', cm: 'https://www.cardmarket.com/en/Pokemon/Cards/Paldea-Evolved/Gengar-ex' },
-];
-let demoIdx = 0;
-
-// ─── Service Worker ───────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(err => console.log('SW error:', err));
-  });
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }
 
-// ─── PWA Install ──────────────────────────────────────────────────────────────
 window.addEventListener('beforeinstallprompt', e => {
-  e.preventDefault();
-  deferredInstallPrompt = e;
+  e.preventDefault(); deferredInstallPrompt = e;
   document.getElementById('installBtn').style.display = '';
 });
 
 function installPWA() {
   if (!deferredInstallPrompt) return;
   deferredInstallPrompt.prompt();
-  deferredInstallPrompt.userChoice.then(r => {
-    if (r.outcome === 'accepted') showToast('Εγκαταστάθηκε στην αρχική οθόνη!');
-    deferredInstallPrompt = null;
-    document.getElementById('installBtn').style.display = 'none';
-  });
+  deferredInstallPrompt.userChoice.then(() => { deferredInstallPrompt = null; document.getElementById('installBtn').style.display = 'none'; });
 }
 
-// ─── Navigation ───────────────────────────────────────────────────────────────
 function showTab(tab) {
-  document.querySelectorAll('.tab-content').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
   document.getElementById('nav-' + tab).classList.add('active');
   if (tab === 'collection') renderCollection();
@@ -52,110 +31,109 @@ function showTab(tab) {
   if (tab === 'settings') renderSettings();
 }
 
-// ─── Scan ──────────────────────────────────────────────────────────────────────
-document.getElementById('fileInput').addEventListener('change', handleScan);
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('searchName').addEventListener('keypress', e => { if (e.key === 'Enter') searchCard(); });
+  document.getElementById('searchNumber').addEventListener('keypress', e => { if (e.key === 'Enter') searchCard(); });
+  checkNotifPermission();
+  updateBadge();
+  renderCollection();
+  renderAlerts();
+});
 
-function handleScan(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  e.target.value = '';
+async function searchCard() {
+  const name = document.getElementById('searchName').value.trim();
+  const number = document.getElementById('searchNumber').value.trim();
+  if (!name) { showToast('⚠️ Βάλε όνομα κάρτας!'); return; }
 
+  const btn = document.getElementById('searchBtn');
+  btn.disabled = true;
   document.getElementById('resultWrap').classList.add('hidden');
+  document.getElementById('tipsSection').style.display = 'none';
   document.getElementById('loadingWrap').classList.remove('hidden');
 
-  // Read image
-  const reader = new FileReader();
-  reader.onload = ev => {
-    currentCard = { ...DEMO_CARDS[demoIdx % DEMO_CARDS.length], imgSrc: ev.target.result };
-    demoIdx++;
+  try {
+    const res = await fetch('/api/recognize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, number })
+    });
+    const card = await res.json();
+    document.getElementById('loadingWrap').classList.add('hidden');
 
-    // Simulate API delay
-    setTimeout(() => {
-      document.getElementById('loadingWrap').classList.add('hidden');
-      showResult(currentCard);
-    }, 1800);
-  };
-  reader.readAsDataURL(file);
+    if (!res.ok || card.error) {
+      showToast('❌ ' + (card.error || 'Δεν βρέθηκε κάρτα'));
+      document.getElementById('tipsSection').style.display = '';
+      return;
+    }
+
+    currentCard = { ...card, id: card.tcgId || name + '-' + Date.now() };
+    showResult(card);
+  } catch (err) {
+    document.getElementById('loadingWrap').classList.add('hidden');
+    document.getElementById('tipsSection').style.display = '';
+    showToast('❌ Σφάλμα σύνδεσης');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function showResult(card) {
-  document.getElementById('resultImg').src = card.imgSrc;
+  const img = document.getElementById('resultImg');
+  if (card.image) { img.src = card.image; img.style.display = ''; }
+  else img.style.display = 'none';
   document.getElementById('resultName').textContent = card.name;
-  document.getElementById('resultSet').textContent = card.set;
-  document.getElementById('resultPrice').textContent = '€' + card.price.toFixed(2);
-
-  const chEl = document.getElementById('resultChange');
-  const sign = card.change > 0 ? '+' : '';
-  chEl.textContent = sign + card.change.toFixed(1) + '%';
-  chEl.className = 'result-change ' + (card.change > 0 ? 'up' : 'down');
-
+  document.getElementById('resultSet').textContent = card.set || '—';
+  document.getElementById('resultRarity').textContent = card.rarity || '—';
+  document.getElementById('resultPrice').textContent = card.price ? '€' + card.price.toFixed(2) : 'N/A';
+  document.getElementById('resultSource').textContent = card.priceSource || '—';
   document.getElementById('resultWrap').classList.remove('hidden');
 }
 
 function addToCollection() {
   if (!currentCard) return;
-  if (collection.find(c => c.id === currentCard.id)) {
-    showToast(currentCard.name + ' υπάρχει ήδη στη συλλογή!');
-    return;
-  }
-  collection.push({ ...currentCard, notify: true, addedAt: Date.now() });
+  if (collection.find(c => c.id === currentCard.id)) { showToast('Υπάρχει ήδη στη συλλογή!'); return; }
+  collection.push({ ...currentCard, notify: true, addedAt: Date.now(), change: 0 });
   saveCollection();
-  showToast('Προστέθηκε στη συλλογή!');
+  showToast('✅ Προστέθηκε στη συλλογή!');
   showTab('collection');
 }
 
-function openCardMarket() {
-  if (currentCard) window.open(currentCard.cm, '_blank');
-}
+function openCM() { if (currentCard?.cardmarketUrl) window.open(currentCard.cardmarketUrl, '_blank'); }
 
-// ─── Collection ───────────────────────────────────────────────────────────────
 function renderCollection() {
   const sorted = [...collection].sort((a, b) => {
-    if (sortMode === 'value') return b.price - a.price;
+    if (sortMode === 'value') return (b.price || 0) - (a.price || 0);
     if (sortMode === 'name') return a.name.localeCompare(b.name);
     return b.addedAt - a.addedAt;
   });
-
   document.getElementById('statCount').textContent = collection.length;
-  const total = collection.reduce((s, c) => s + c.price, 0);
-  document.getElementById('statValue').textContent = '€' + total.toFixed(2);
-
+  document.getElementById('statValue').textContent = '€' + collection.reduce((s, c) => s + (c.price || 0), 0).toFixed(2);
   const list = document.getElementById('collectionList');
   if (!collection.length) {
-    list.innerHTML = `<div class="empty-state"><div class="empty-icon">◈</div><p>Δεν έχεις κάρτες ακόμα</p><p class="empty-hint">Σκανάρισε την πρώτη σου!</p></div>`;
+    list.innerHTML = `<div class="empty-state"><div class="empty-ball"><svg viewBox="0 0 60 60" width="60" height="60"><circle cx="30" cy="30" r="28" fill="#ddd" stroke="#bbb" stroke-width="2"/><rect x="2" y="28" width="56" height="4" fill="#999"/><path d="M2 30 Q30 2 58 30" fill="#ddd"/><path d="M2 30 Q30 58 58 30" fill="#f5f5f5"/><circle cx="30" cy="30" r="9" fill="white" stroke="#bbb" stroke-width="2"/></svg></div><p>Δεν έχεις κάρτες ακόμα!</p><p class="empty-sub">Αναζήτησε μια κάρτα και πρόσθεσέ τη</p></div>`;
     return;
   }
-
-  list.innerHTML = sorted.map((c, i) => {
-    const realIdx = collection.indexOf(c);
-    const imgHtml = c.imgSrc
-      ? `<img class="coll-img" src="${c.imgSrc}" alt="${c.name}">`
-      : `<div class="coll-img-placeholder">◈</div>`;
-    return `
-      <div class="coll-item">
-        ${imgHtml}
-        <div class="coll-info">
-          <div class="coll-name">${c.name}</div>
-          <div class="coll-set">${c.set.split('·')[0].trim()}</div>
-        </div>
-        <div class="coll-right">
-          <div class="coll-price">€${c.price.toFixed(2)}</div>
-          <div class="coll-change ${c.change > 0 ? 'up' : 'down'}">${c.change > 0 ? '+' : ''}${c.change.toFixed(1)}%</div>
-          <div class="notif-toggle-wrap">
-            <span class="notif-label">${c.notify ? 'alert on' : 'off'}</span>
-            <div class="toggle-switch ${c.notify ? 'on' : ''}" onclick="toggleNotify(${realIdx})" role="switch" aria-checked="${c.notify}" aria-label="Ειδοποίηση για ${c.name}"></div>
-          </div>
-        </div>
-      </div>`;
+  list.innerHTML = sorted.map(c => {
+    const i = collection.indexOf(c);
+    return `<div class="coll-item">
+      <div class="coll-img-wrap">${c.image ? `<img src="${c.image}" alt="${c.name}">` : '🃏'}</div>
+      <div class="coll-info">
+        <div class="coll-name">${c.name}</div>
+        <div class="coll-set">${(c.set || '').split('·')[0].trim()}</div>
+      </div>
+      <div class="coll-right">
+        <div class="coll-price">${c.price ? '€' + c.price.toFixed(2) : 'N/A'}</div>
+        <div class="coll-change ${c.change >= 0 ? 'up' : 'down'}">${c.change !== 0 ? (c.change > 0 ? '+' : '') + c.change.toFixed(1) + '%' : c.rarity || ''}</div>
+        <div class="notif-wrap"><span>${c.notify ? 'on' : 'off'}</span><div class="toggle ${c.notify ? 'on' : ''}" onclick="toggleNotify(${i})"></div></div>
+      </div>
+    </div>`;
   }).join('');
 }
 
 function toggleNotify(i) {
   collection[i].notify = !collection[i].notify;
-  saveCollection();
-  renderCollection();
+  saveCollection(); renderCollection();
   if (document.getElementById('tab-settings').classList.contains('active')) renderSettings();
-  updateAlertDot();
 }
 
 function toggleSort() {
@@ -166,147 +144,117 @@ function toggleSort() {
   renderCollection();
 }
 
-// ─── Alerts ───────────────────────────────────────────────────────────────────
 function renderAlerts() {
-  document.getElementById('alertBadge') && (document.getElementById('alertBadge').textContent = alertLog.length);
   const list = document.getElementById('alertList');
   if (!alertLog.length) {
-    list.innerHTML = `<div class="empty-state"><div class="empty-icon">◈</div><p>Καμία ειδοποίηση ακόμα</p><p class="empty-hint">Ενεργοποίησε alerts στις ρυθμίσεις</p></div>`;
+    list.innerHTML = `<div class="empty-state"><div class="empty-ball"><svg viewBox="0 0 60 60" width="60" height="60"><circle cx="30" cy="30" r="28" fill="#ddd" stroke="#bbb" stroke-width="2"/><rect x="2" y="28" width="56" height="4" fill="#999"/><path d="M2 30 Q30 2 58 30" fill="#ddd"/><path d="M2 30 Q30 58 58 30" fill="#f5f5f5"/><circle cx="30" cy="30" r="9" fill="white" stroke="#bbb" stroke-width="2"/></svg></div><p>Καμία ειδοποίηση ακόμα</p><p class="empty-sub">Θα εμφανιστούν όταν αλλάξουν οι τιμές</p></div>`;
     return;
   }
   list.innerHTML = [...alertLog].reverse().map(a => `
     <div class="alert-item">
-      <div class="alert-dot-icon ${a.dir}"></div>
+      <div class="alert-dot ${a.dir}"></div>
       <div class="alert-body">
-        <div class="alert-card-name">${a.name}</div>
-        <div class="alert-detail">${a.dir === 'up' ? 'Άνοδος' : 'Πτώση'} ${Math.abs(a.pct).toFixed(1)}% → €${a.price.toFixed(2)}</div>
+        <div class="alert-name">${a.name}</div>
+        <div class="alert-detail">${a.dir === 'up' ? '📈 Άνοδος' : '📉 Πτώση'} ${Math.abs(a.pct).toFixed(1)}% → €${a.price.toFixed(2)}</div>
       </div>
       <div class="alert-time">${a.time}</div>
     </div>`).join('');
-  updateAlertDot();
+  updateBadge();
 }
 
-function clearAlerts() {
-  alertLog = [];
-  saveAlerts();
-  renderAlerts();
-  updateAlertDot();
+function clearAlerts() { alertLog = []; saveAlerts(); renderAlerts(); updateBadge(); showToast('Καθαρίστηκαν οι ειδοποιήσεις'); }
+
+function updateBadge() {
+  const badge = document.getElementById('notifBadge');
+  if (alertLog.length > 0) { badge.textContent = alertLog.length; badge.classList.remove('hidden'); }
+  else badge.classList.add('hidden');
 }
 
-function updateAlertDot() {
-  const dot = document.getElementById('alertDot');
-  const hasActive = collection.some(c => c.notify);
-  dot.classList.toggle('hidden', !alertLog.length && !hasActive);
-}
-
-// ─── Settings ─────────────────────────────────────────────────────────────────
 function renderSettings() {
   const el = document.getElementById('cardNotifList');
-  if (!collection.length) {
-    el.innerHTML = '<p class="no-cards-msg">Δεν υπάρχουν κάρτες στη συλλογή ακόμα.</p>';
-    return;
-  }
+  if (!collection.length) { el.innerHTML = '<p class="no-cards">Δεν υπάρχουν κάρτες ακόμα.</p>'; return; }
   el.innerHTML = collection.map((c, i) => `
     <div class="card-notif-row">
       <div class="card-notif-name">${c.name}</div>
-      <div class="card-notif-price">€${c.price.toFixed(2)}</div>
-      <div class="toggle-switch ${c.notify ? 'on' : ''}" onclick="toggleNotify(${i})" role="switch" aria-checked="${c.notify}" aria-label="Ειδοποίηση ${c.name}"></div>
+      <div class="card-notif-price">${c.price ? '€' + c.price.toFixed(2) : 'N/A'}</div>
+      <div class="toggle ${c.notify ? 'on' : ''}" onclick="toggleNotify(${i})"></div>
     </div>`).join('');
 }
 
-// ─── Price Refresh ────────────────────────────────────────────────────────────
-function simulateRefresh() {
-  if (!collection.length) { showToast('Δεν υπάρχουν κάρτες στη συλλογή!'); return; }
+async function refreshPrices() {
+  if (!collection.length) { showToast('Δεν υπάρχουν κάρτες!'); return; }
   const up = parseFloat(document.getElementById('threshUp').value) || 10;
   const dn = parseFloat(document.getElementById('threshDown').value) || 10;
   const now = new Date().toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' });
+  showToast('🔄 Ανανέωση τιμών...');
   let newAlerts = 0;
 
-  collection.forEach(c => {
-    const variation = (Math.random() * 30) - 12;
-    const newPrice = Math.max(0.5, c.price * (1 + variation / 100));
-    const pct = ((newPrice - c.price) / c.price) * 100;
-
-    if (c.notify && pct >= up) {
-      alertLog.push({ name: c.name, dir: 'up', pct, price: parseFloat(newPrice.toFixed(2)), time: now });
-      c.price = parseFloat(newPrice.toFixed(2));
-      c.change = parseFloat(pct.toFixed(1));
-      newAlerts++;
-      sendPushNotification(c.name, `Άνοδος +${pct.toFixed(1)}% → €${newPrice.toFixed(2)}`);
-    } else if (c.notify && pct <= -dn) {
-      alertLog.push({ name: c.name, dir: 'down', pct, price: parseFloat(newPrice.toFixed(2)), time: now });
-      c.price = parseFloat(newPrice.toFixed(2));
-      c.change = parseFloat(pct.toFixed(1));
-      newAlerts++;
-      sendPushNotification(c.name, `Πτώση ${pct.toFixed(1)}% → €${newPrice.toFixed(2)}`);
-    }
-  });
-
-  saveCollection();
-  saveAlerts();
-  renderCollection();
-  renderAlerts();
-  updateAlertDot();
-  showToast(newAlerts > 0 ? `${newAlerts} νέα alert${newAlerts > 1 ? 's' : ''}!` : 'Τιμές ανανεώθηκαν — καμία αλλαγή');
+  for (const c of collection) {
+    if (!c.tcgId) continue;
+    try {
+      const res = await fetch(`https://api.pokemontcg.io/v2/cards/${c.tcgId}`);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const card = data.data;
+      let newPrice = null;
+      if (card?.cardmarket?.prices?.averageSellPrice) newPrice = card.cardmarket.prices.averageSellPrice;
+      else if (card?.tcgplayer?.prices) {
+        const pk = card.tcgplayer.prices.holofoil || card.tcgplayer.prices.normal;
+        if (pk?.market) newPrice = pk.market;
+      }
+      if (!newPrice || !c.price) continue;
+      const pct = ((newPrice - c.price) / c.price) * 100;
+      if (c.notify && pct >= up) {
+        alertLog.push({ name: c.name, dir: 'up', pct, price: parseFloat(newPrice.toFixed(2)), time: now });
+        c.price = parseFloat(newPrice.toFixed(2)); c.change = parseFloat(pct.toFixed(1)); newAlerts++;
+        sendPush(c.name, `📈 Άνοδος +${pct.toFixed(1)}% → €${newPrice.toFixed(2)}`);
+      } else if (c.notify && pct <= -dn) {
+        alertLog.push({ name: c.name, dir: 'down', pct, price: parseFloat(newPrice.toFixed(2)), time: now });
+        c.price = parseFloat(newPrice.toFixed(2)); c.change = parseFloat(pct.toFixed(1)); newAlerts++;
+        sendPush(c.name, `📉 Πτώση ${pct.toFixed(1)}% → €${newPrice.toFixed(2)}`);
+      }
+    } catch (e) {}
+  }
+  saveCollection(); saveAlerts(); renderCollection(); updateBadge();
+  showToast(newAlerts > 0 ? `🔔 ${newAlerts} νέα alert${newAlerts > 1 ? 's' : ''}!` : '✅ Καμία αλλαγή τιμής');
 }
 
-// ─── Push Notifications ───────────────────────────────────────────────────────
 async function requestNotifPermission() {
-  if (!('Notification' in window)) {
-    document.getElementById('notifStatus').textContent = 'Ο browser δεν υποστηρίζει notifications.';
-    return;
-  }
-  const perm = await Notification.requestPermission();
-  const status = document.getElementById('notifStatus');
-  const btn = document.getElementById('notifBtn');
-  if (perm === 'granted') {
-    status.textContent = '✓ Ειδοποιήσεις ενεργοποιημένες!';
-    btn.textContent = 'Ενεργοποιημένες ✓';
-    btn.disabled = true;
-    showToast('Push notifications ενεργά!');
+  if (!('Notification' in window)) { document.getElementById('notifStatus').textContent = 'Δεν υποστηρίζεται.'; return; }
+  const p = await Notification.requestPermission();
+  if (p === 'granted') {
+    document.getElementById('notifStatus').textContent = '✅ Ενεργοποιημένες!';
+    document.getElementById('notifBtn').textContent = 'Ενεργοποιημένες ✓';
+    document.getElementById('notifBtn').disabled = true;
   } else {
-    status.textContent = 'Απορρίφθηκαν. Ενεργοποίησε τες από τις ρυθμίσεις browser.';
+    document.getElementById('notifStatus').textContent = 'Απορρίφθηκαν από τις ρυθμίσεις browser.';
   }
 }
 
-function sendPushNotification(title, body) {
-  if (Notification.permission === 'granted') {
-    new Notification('PokéScan — ' + title, {
-      body,
-      icon: 'icons/icon-192.png',
-      badge: 'icons/icon-192.png',
-    });
+function checkNotifPermission() {
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    const btn = document.getElementById('notifBtn');
+    if (btn) { btn.textContent = 'Ενεργοποιημένες ✓'; btn.disabled = true; }
+    document.getElementById('notifStatus').textContent = '✅ Ενεργοποιημένες!';
   }
 }
 
-// ─── Persistence ──────────────────────────────────────────────────────────────
+function sendPush(title, body) {
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    new Notification('PokéScan — ' + title, { body, icon: 'icons/icon-192.png' });
+  }
+}
+
 function saveCollection() { localStorage.setItem('pokescan_collection', JSON.stringify(collection)); }
 function saveAlerts() { localStorage.setItem('pokescan_alerts', JSON.stringify(alertLog)); }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
 let toastTimer;
 function showToast(msg) {
-  let toast = document.getElementById('toast');
-  if (!toast) {
-    toast = document.createElement('div');
-    toast.id = 'toast';
-    toast.className = 'toast';
-    document.body.appendChild(toast);
-  }
-  toast.textContent = msg;
+  const t = document.getElementById('toast');
+  t.classList.remove('hidden'); t.textContent = msg;
   clearTimeout(toastTimer);
   requestAnimationFrame(() => {
-    toast.classList.add('show');
-    toastTimer = setTimeout(() => toast.classList.remove('show'), 2600);
+    t.classList.add('show');
+    toastTimer = setTimeout(() => { t.classList.remove('show'); }, 2800);
   });
 }
-
-// ─── Notification permission check on load ────────────────────────────────────
-window.addEventListener('load', () => {
-  if (Notification.permission === 'granted') {
-    const btn = document.getElementById('notifBtn');
-    if (btn) { btn.textContent = 'Ενεργοποιημένες ✓'; btn.disabled = true; }
-    document.getElementById('notifStatus').textContent = '✓ Ειδοποιήσεις ενεργοποιημένες!';
-  }
-  updateAlertDot();
-});
