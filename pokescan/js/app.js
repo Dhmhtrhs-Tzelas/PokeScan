@@ -31,7 +31,7 @@ function showTab(tab) {
   if (tab === 'settings') renderSettings();
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('load', () => {
   document.getElementById('searchName').addEventListener('keypress', e => { if (e.key === 'Enter') searchCard(); });
   document.getElementById('searchNumber').addEventListener('keypress', e => { if (e.key === 'Enter') searchCard(); });
   checkNotifPermission();
@@ -100,6 +100,20 @@ function addToCollection() {
 
 function openCM() { if (currentCard?.cardmarketUrl) window.open(currentCard.cardmarketUrl, '_blank'); }
 
+function editPrice(i) {
+  const c = collection[i];
+  const current = c.price ? c.price.toFixed(2) : '';
+  const newPrice = prompt(`Τιμή για "${c.name}" (€):`, current);
+  if (newPrice === null) return;
+  const parsed = parseFloat(newPrice.replace(',', '.'));
+  if (isNaN(parsed) || parsed < 0) { showToast('❌ Μη έγκυρη τιμή!'); return; }
+  collection[i].price = parsed;
+  collection[i].priceSource = 'Χειροκίνητη';
+  saveCollection();
+  renderCollection();
+  showToast('✅ Τιμή ενημερώθηκε!');
+}
+
 function renderCollection() {
   const sorted = [...collection].sort((a, b) => {
     if (sortMode === 'value') return (b.price || 0) - (a.price || 0);
@@ -115,6 +129,8 @@ function renderCollection() {
   }
   list.innerHTML = sorted.map(c => {
     const i = collection.indexOf(c);
+    const priceDisplay = c.price ? '€' + c.price.toFixed(2) : 'N/A';
+    const priceColor = !c.price ? 'color:#f87171' : '';
     return `<div class="coll-item">
       <div class="coll-img-wrap">${c.image ? `<img src="${c.image}" alt="${c.name}">` : '🃏'}</div>
       <div class="coll-info">
@@ -122,7 +138,10 @@ function renderCollection() {
         <div class="coll-set">${(c.set || '').split('·')[0].trim()}</div>
       </div>
       <div class="coll-right">
-        <div class="coll-price">${c.price ? '€' + c.price.toFixed(2) : 'N/A'}</div>
+        <div class="coll-price-row" style="display:flex;align-items:center;gap:4px;justify-content:flex-end">
+          <div class="coll-price" style="${priceColor}">${priceDisplay}</div>
+          <button onclick="editPrice(${i})" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0 2px;opacity:0.7" title="Επεξεργασία τιμής">✏️</button>
+        </div>
         <div class="coll-change ${c.change >= 0 ? 'up' : 'down'}">${c.change !== 0 ? (c.change > 0 ? '+' : '') + c.change.toFixed(1) + '%' : c.rarity || ''}</div>
         <div class="notif-wrap"><span>${c.notify ? 'on' : 'off'}</span><div class="toggle ${c.notify ? 'on' : ''}" onclick="toggleNotify(${i})"></div></div>
       </div>
@@ -176,7 +195,7 @@ function renderSettings() {
   el.innerHTML = collection.map((c, i) => `
     <div class="card-notif-row">
       <div class="card-notif-name">${c.name}</div>
-      <div class="card-notif-price">${c.price ? '€' + c.price.toFixed(2) : 'N/A'}</div>
+      <div class="card-notif-price" style="cursor:pointer" onclick="editPrice(${i})" title="Πάτα για αλλαγή τιμής">${c.price ? '€' + c.price.toFixed(2) : 'N/A ✏️'}</div>
       <div class="toggle ${c.notify ? 'on' : ''}" onclick="toggleNotify(${i})"></div>
     </div>`).join('');
 }
@@ -190,7 +209,7 @@ async function refreshPrices() {
   let newAlerts = 0;
 
   for (const c of collection) {
-    if (!c.tcgId) continue;
+    if (!c.tcgId || !c.price) continue;
     try {
       const res = await fetch(`https://api.pokemontcg.io/v2/cards/${c.tcgId}`);
       if (!res.ok) continue;
@@ -198,11 +217,13 @@ async function refreshPrices() {
       const card = data.data;
       let newPrice = null;
       if (card?.cardmarket?.prices?.averageSellPrice) newPrice = card.cardmarket.prices.averageSellPrice;
+      else if (card?.cardmarket?.prices?.trendPrice) newPrice = card.cardmarket.prices.trendPrice;
       else if (card?.tcgplayer?.prices) {
-        const pk = card.tcgplayer.prices.holofoil || card.tcgplayer.prices.normal;
+        const pk = card.tcgplayer.prices.holofoil || card.tcgplayer.prices.normal || card.tcgplayer.prices.unlimited;
         if (pk?.market) newPrice = pk.market;
+        else if (pk?.mid) newPrice = pk.mid;
       }
-      if (!newPrice || !c.price) continue;
+      if (!newPrice) continue;
       const pct = ((newPrice - c.price) / c.price) * 100;
       if (c.notify && pct >= up) {
         alertLog.push({ name: c.name, dir: 'up', pct, price: parseFloat(newPrice.toFixed(2)), time: now });
